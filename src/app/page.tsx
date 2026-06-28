@@ -92,7 +92,7 @@ function MealCard({ m, picked, onPick, onOpen, onLike, onDislike, liked }:
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             <span className="chip">{m.flavor === "sweet" ? "🍬 sweet" : "🧂 savory"}</span>
-            <span className="text-xs text-[var(--color-mute)]">⏱ {m.minutes}m · {m.nutrition.calories} cal · {m.nutrition.protein}g protein{m.cost ? ` · ~$${m.cost}` : ""}</span>
+            <span className="text-xs text-[var(--color-mute)]">⏱ {m.minutes}m{m.calories ? ` · ${m.calories} cal` : ""}{m.cost ? ` · ~$${m.cost}` : ""}</span>
           </div>
           <p className="font-semibold leading-snug">{m.name}</p>
           <p className="mt-0.5 text-sm text-[var(--color-soft)]">{m.note}</p>
@@ -286,7 +286,7 @@ export default function Home() {
         </div>
       )}
 
-      {recipe && <RecipeModal meal={recipe} onClose={() => setRecipe(null)} onCook={() => { setCooking(recipe); setRecipe(null); }} />}
+      {recipe && <RecipeModal meal={recipe} ctx={{ have: [combinedIngredients(), ...detected].filter(Boolean).join(", "), diet, people }} onClose={() => setRecipe(null)} onCook={(full) => { setCooking(full); setRecipe(null); }} />}
       {cooking && <CookMode meal={cooking} onClose={() => setCooking(null)} />}
     </main>
   );

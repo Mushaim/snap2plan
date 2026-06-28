@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-type Meal = { name: string; steps: string[]; minutes: number };
+type Meal = { name: string; steps?: string[]; minutes: number };
 
 // detect "10 min", "5 minutes", "2-3 min" → seconds for a quick timer on that step
 function stepMinutes(step: string): number | null {
@@ -14,8 +14,9 @@ export default function CookMode({ meal, onClose }: { meal: Meal; onClose: () =>
   const [left, setLeft] = useState<number | null>(null);
   const [ringing, setRinging] = useState(false);
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
-  const total = meal.steps.length;
-  const mins = stepMinutes(meal.steps[i] || "");
+  const steps = meal.steps ?? [];
+  const total = steps.length;
+  const mins = stepMinutes(steps[i] || "");
 
   useEffect(() => { setLeft(null); setRinging(false); if (tick.current) clearInterval(tick.current); }, [i]);
 
@@ -52,7 +53,7 @@ export default function CookMode({ meal, onClose }: { meal: Meal; onClose: () =>
       <div className="flex flex-1 items-center justify-center px-7 text-center">
         <div>
           <div className="mx-auto mb-5 grid h-12 w-12 place-items-center rounded-full bg-[var(--color-accent)] text-xl font-bold text-white">{i + 1}</div>
-          <p className="serif text-2xl leading-relaxed text-[var(--color-ink)]">{meal.steps[i]}</p>
+          <p className="serif text-2xl leading-relaxed text-[var(--color-ink)]">{steps[i]}</p>
 
           {mins && left === null && (
             <button onClick={() => startTimer(mins * 60)} className="btn mt-7 inline-block">⏲ Start {mins}-min timer</button>

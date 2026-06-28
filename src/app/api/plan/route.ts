@@ -7,6 +7,8 @@ export const maxDuration = 90;
 type Prefs = { diet?: string; people?: number; days?: number; maxMinutes?: number; flavor?: string; moods?: string[]; cuisine?: string; budget?: boolean };
 type Taste = { likes?: string[]; dislikes?: string[]; excluded?: string[] };
 
+// LIGHT meal for the list — full recipe (ingredients/steps/nutrition) is fetched on demand
+// via /api/recipe when the user opens a dish. Keeps the list fast + within token budget.
 const mealProps = {
   name: { type: "string" },
   flavor: { type: "string", enum: ["sweet", "savory"], description: "is this a sweet or savory dish" },
@@ -14,21 +16,11 @@ const mealProps = {
   difficulty: { type: "string", enum: ["easy", "medium"] },
   uses: { type: "array", items: { type: "string" }, description: "items they already have, used here" },
   missing: { type: "array", items: { type: "string" }, description: "items they'd need to buy (empty if none)" },
-  ingredients: {
-    type: "array",
-    description: "the FULL ingredient list with amounts for the recipe",
-    items: { type: "object", properties: { item: { type: "string" }, qty: { type: "string" }, have: { type: "boolean", description: "true if it's something they already have" } }, required: ["item", "qty", "have"] },
-  },
-  steps: { type: "array", items: { type: "string" }, description: "3-7 clear cooking steps; mention timings in the step text where useful (e.g. 'simmer 10 min')" },
-  nutrition: {
-    type: "object", description: "approximate per-serving nutrition",
-    properties: { calories: { type: "number" }, protein: { type: "number" }, carbs: { type: "number" }, fat: { type: "number" } },
-    required: ["calories", "protein", "carbs", "fat"],
-  },
-  cost: { type: "number", description: "rough estimated cost per serving in USD (e.g. 3 for $3)" },
+  calories: { type: "number", description: "rough per-serving calories" },
+  cost: { type: "number", description: "rough estimated cost per serving in USD" },
   note: { type: "string", description: "one short enticing line about the dish" },
 };
-const meal = { type: "object", properties: mealProps, required: ["name", "flavor", "minutes", "difficulty", "uses", "missing", "ingredients", "steps", "nutrition", "cost", "note"] };
+const meal = { type: "object", properties: mealProps, required: ["name", "flavor", "minutes", "difficulty", "uses", "missing", "calories", "cost", "note"] };
 
 export async function POST(req: Request) {
   const { mode, image, ingredients, prefs, taste } = (await req.json()) as
