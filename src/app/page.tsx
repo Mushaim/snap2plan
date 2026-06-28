@@ -1,33 +1,34 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { loadTaste, saveTaste, like, dislike, type Taste } from "@/lib/taste";
 
-type Meal = { day: string; name: string; minutes: number; uses: string[]; steps: string[] };
-type Plan = { detected: string[]; meals: Meal[]; grocery: string[] };
+type Meal = { name: string; flavor: "sweet" | "savory"; minutes: number; difficulty: string; uses: string[]; missing: string[]; steps: string[]; note: string };
+type DayPlan = { day: string; options: Meal[] };
 
 const DIETS = ["Any", "Vegetarian", "Vegan", "Halal", "Keto"];
-const STEPS = ["📸 Looking inside your fridge", "🍽️ Planning your week of meals", "🛒 Building your grocery list"];
+const MOODS = ["Quick", "Light", "Hearty", "Comfort", "Healthy", "Spicy"];
+const STEPS_NOW = ["📸 Checking what you have", "💡 Coming up with options", "🍽️ Almost ready"];
+const STEPS_WEEK = ["📸 Checking your fridge", "🍽️ Planning options for each day", "🛒 Finishing up"];
 
-// Downscale a photo to keep the upload small + fast.
 function resize(file: File): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((res) => {
     const img = new Image();
     img.onload = () => {
-      const max = 1024, scale = Math.min(1, max / Math.max(img.width, img.height));
-      const c = document.createElement("canvas");
-      c.width = img.width * scale; c.height = img.height * scale;
+      const max = 1024, s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = img.width * s; c.height = img.height * s;
       c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
-      resolve(c.toDataURL("image/jpeg", 0.8));
+      res(c.toDataURL("image/jpeg", 0.8));
     };
     img.src = URL.createObjectURL(file);
   });
 }
 
-function StepLoader() {
+function StepLoader({ steps }: { steps: string[] }) {
   const [i, setI] = useState(0);
-  useEffect(() => { const t = setInterval(() => setI((x) => Math.min(x + 1, STEPS.length - 1)), 2800); return () => clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(() => setI((x) => Math.min(x + 1, steps.length - 1)), 2400); return () => clearInterval(t); }, [steps]);
   return (
     <div className="card mt-5 space-y-3 p-5">
-      {STEPS.map((s, idx) => (
+      {steps.map((s, idx) => (
         <div key={s} className="flex items-center gap-3 text-sm" style={{ opacity: idx <= i ? 1 : 0.35 }}>
           {idx < i ? <span className="text-[var(--color-accent)]">✓</span>
             : idx === i ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--color-accent)] border-t-transparent" />
@@ -39,114 +40,191 @@ function StepLoader() {
   );
 }
 
+function MealCard({ m, picked, onPick, onLike, onDislike, liked }:
+  { m: Meal; picked?: boolean; onPick?: () => void; onLike: () => void; onDislike: () => void; liked: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card pop overflow-hidden" style={picked ? { borderColor: "var(--color-accent)", borderWidth: 2 } : {}}>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="mb-1 flex flex-wrap items-center gap-1.5">
+              <span className="chip">{m.flavor === "sweet" ? "🍬 sweet" : "🧂 savory"}</span>
+              <span className="text-xs text-[var(--color-mute)]">⏱ {m.minutes}m · {m.difficulty}</span>
+            </div>
+            <p className="font-semibold leading-snug">{m.name}</p>
+            <p className="mt-0.5 text-sm text-[var(--color-soft)]">{m.note}</p>
+          </div>
+          <div className="flex shrink-0 flex-col gap-1">
+            <button onClick={onLike} title="More like this" className="rounded-lg border border-[var(--color-line)] px-2 py-1 text-sm" style={liked ? { background: "var(--color-accent)", color: "#fff", borderColor: "var(--color-accent)" } : {}}>👍</button>
+            <button onClick={onDislike} title="Never suggest again" className="rounded-lg border border-[var(--color-line)] px-2 py-1 text-sm">👎</button>
+          </div>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button onClick={() => setOpen((o) => !o)} className="btn-soft rounded-xl px-3 py-2 text-sm">{open ? "Hide recipe" : "👀 See recipe"}</button>
+          {onPick && <button onClick={onPick} className="btn rounded-xl px-3 py-2 text-sm">{picked ? "✓ Picked" : "Pick this"}</button>}
+        </div>
+        {open && (
+          <div className="mt-3 border-t border-[var(--color-line)] pt-3 text-sm">
+            <p className="text-[var(--color-soft)]"><b>Uses:</b> {m.uses.join(", ") || "—"}</p>
+            {m.missing.length > 0 && <p className="text-[var(--color-accent2)]"><b>Need:</b> {m.missing.join(", ")}</p>}
+            <ol className="ml-4 mt-2 list-decimal space-y-1">{m.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
-  const [img, setImg] = useState<string>("");
+  const [mode, setMode] = useState<"now" | "week">("now");
+  const [img, setImg] = useState("");
   const [ingredients, setIngredients] = useState("");
+  const [flavor, setFlavor] = useState("Any");
+  const [moods, setMoods] = useState<string[]>([]);
   const [diet, setDiet] = useState("Any");
   const [people, setPeople] = useState(2);
   const [days, setDays] = useState(5);
-  const [quick, setQuick] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [more, setMore] = useState(false);
   const [err, setErr] = useState("");
-  const [plan, setPlan] = useState<Plan | null>(null);
-  const [open, setOpen] = useState<number | null>(0);
+  const [detected, setDetected] = useState<string[]>([]);
+  const [options, setOptions] = useState<Meal[]>([]);     // eat-now
+  const [week, setWeek] = useState<DayPlan[]>([]);          // plan-week
+  const [picks, setPicks] = useState<Record<string, string>>({});
+  const [taste, setTaste] = useState<Taste>({ likes: [], dislikes: [], excluded: [] });
   const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => setTaste(loadTaste()), []);
 
-  async function go() {
-    setErr(""); setLoading(true); setPlan(null);
+  const body = (tasteNow: Taste) => ({
+    mode, image: img || undefined, ingredients,
+    prefs: { diet, people, days, flavor, moods, maxMinutes: mode === "now" ? 25 : undefined },
+    taste: tasteNow,
+  });
+
+  async function go(append = false) {
+    setErr(""); append ? setMore(true) : setLoading(true);
+    if (!append) { setOptions([]); setWeek([]); setPicks({}); }
     try {
-      const res = await fetch("/api/plan", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: img || undefined, ingredients, prefs: { diet, people, days, maxMinutes: quick ? 20 : undefined } }),
-      });
+      const res = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body(taste)) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setPlan(data.plan); setOpen(0);
-    } catch (e) { setErr((e as Error).message); } finally { setLoading(false); }
+      setDetected(data.result.detected ?? []);
+      if (mode === "now") {
+        const fresh: Meal[] = (data.result.options ?? []).filter((m: Meal) => !taste.dislikes.includes(m.name));
+        setOptions((prev) => append ? dedupe([...prev, ...fresh]) : fresh);
+      } else {
+        setWeek(data.result.days ?? []);
+      }
+    } catch (e) { setErr((e as Error).message); } finally { setLoading(false); setMore(false); }
+  }
+  const dedupe = (a: Meal[]) => Object.values(Object.fromEntries(a.map((m) => [m.name, m])));
+
+  function doLike(name: string) { const nt = like(taste, name); setTaste(nt); saveTaste(nt); }
+  function doDislike(name: string) {
+    const nt = dislike(taste, name); setTaste(nt); saveTaste(nt);
+    setOptions((o) => o.filter((m) => m.name !== name));               // vanish from view
+    setWeek((w) => w.map((d) => ({ ...d, options: d.options.filter((m) => m.name !== name) })));
   }
 
+  const canGo = !!img || !!ingredients.trim();
+
   return (
-    <main className="mx-auto max-w-2xl px-5 py-10">
-      <div className="mb-6">
+    <main className="mx-auto max-w-2xl px-5 py-8">
+      <div className="mb-5">
         <h1 className="serif text-4xl font-bold">Snap2Plan 🥗</h1>
-        <p className="mt-1 text-[var(--color-soft)]">Snap your fridge → get a week of dinners + a grocery list. <span className="chip">demo</span></p>
+        <p className="mt-1 text-[var(--color-soft)]">Snap your fridge → get options, you choose. <span className="chip">demo</span></p>
+      </div>
+
+      {/* mode toggle */}
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        {([["now", "⚡ Eat now"], ["week", "📅 Plan my week"]] as const).map(([m, label]) => (
+          <button key={m} onClick={() => setMode(m)} className="rounded-xl border py-2.5 font-semibold transition-colors"
+            style={mode === m ? { background: "var(--color-accent)", color: "#fff", borderColor: "var(--color-accent)" } : { borderColor: "var(--color-line)", background: "#fff" }}>
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="card space-y-4 p-5">
-        {/* photo */}
         <div>
-          <label className="label">Your fridge / pantry</label>
           <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
             onChange={async (e) => { const f = e.target.files?.[0]; if (f) setImg(await resize(f)); }} />
           {img ? (
-            <div className="relative mt-2">
-              <img src={img} alt="" className="max-h-56 w-full rounded-xl object-cover" />
+            <div className="relative">
+              <img src={img} alt="" className="max-h-52 w-full rounded-xl object-cover" />
               <button onClick={() => { setImg(""); if (fileRef.current) fileRef.current.value = ""; }} className="absolute right-2 top-2 rounded-lg bg-black/60 px-2 py-1 text-xs text-white">change</button>
             </div>
           ) : (
-            <button onClick={() => fileRef.current?.click()} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--color-line)] py-7 text-[var(--color-soft)]">
-              📷 Tap to snap or upload a photo
-            </button>
+            <button onClick={() => fileRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--color-line)] py-6 text-[var(--color-soft)]">📷 Snap or upload your fridge</button>
           )}
         </div>
-        <div className="text-center text-xs text-[var(--color-mute)]">— or —</div>
-        <div>
-          <label className="label">List what you have (optional)</label>
-          <input className="input mt-1" value={ingredients} onChange={(e) => setIngredients(e.target.value)} placeholder="eggs, spinach, chicken, rice, tomatoes…" />
-        </div>
+        <input className="input" value={ingredients} onChange={(e) => setIngredients(e.target.value)} placeholder="…or type: eggs, spinach, chicken, rice" />
 
-        {/* prefs */}
+        {/* flavor craving */}
+        <div className="flex items-center gap-2">
+          <span className="label">Craving</span>
+          {["Any", "Savory", "Sweet"].map((f) => (
+            <button key={f} className="pill" data-on={flavor === f} onClick={() => setFlavor(f)}>{f === "Sweet" ? "🍬 Sweet" : f === "Savory" ? "🧂 Savory" : f}</button>
+          ))}
+        </div>
+        {/* moods */}
         <div className="flex flex-wrap gap-1.5">
-          {DIETS.map((d) => <button key={d} className="pill" data-on={diet === d} onClick={() => setDiet(d)}>{d}</button>)}
+          {MOODS.map((m) => (
+            <button key={m} className="pill" data-on={moods.includes(m)} onClick={() => setMoods((x) => x.includes(m) ? x.filter((y) => y !== m) : [...x, m])}>{m}</button>
+          ))}
         </div>
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <label className="flex items-center gap-2">👥 People <input type="number" min={1} max={8} value={people} onChange={(e) => setPeople(+e.target.value)} className="input w-16 py-1.5" /></label>
-          <label className="flex items-center gap-2">📅 Days <input type="number" min={1} max={7} value={days} onChange={(e) => setDays(+e.target.value)} className="input w-16 py-1.5" /></label>
-          <button className="pill" data-on={quick} onClick={() => setQuick((q) => !q)}>⚡ Quick (&lt;20 min)</button>
-        </div>
+        {/* diet + (week) people/days */}
+        <div className="flex flex-wrap gap-1.5">{DIETS.map((d) => <button key={d} className="pill" data-on={diet === d} onClick={() => setDiet(d)}>{d}</button>)}</div>
+        {mode === "week" && (
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <label className="flex items-center gap-2">👥 <input type="number" min={1} max={8} value={people} onChange={(e) => setPeople(+e.target.value)} className="input w-16 py-1.5" /></label>
+            <label className="flex items-center gap-2">📅 <input type="number" min={1} max={7} value={days} onChange={(e) => setDays(+e.target.value)} className="input w-16 py-1.5" /></label>
+          </div>
+        )}
 
-        <button className="btn w-full" onClick={go} disabled={loading || (!img && !ingredients.trim())}>{loading ? "Cooking up a plan…" : "Plan my week →"}</button>
+        <button className="btn w-full" onClick={() => go(false)} disabled={loading || !canGo}>
+          {loading ? "Thinking…" : mode === "now" ? "Show me options →" : "Plan my week →"}
+        </button>
+        {(taste.likes.length > 0 || taste.dislikes.length > 0) && (
+          <p className="text-xs text-[var(--color-mute)]">Learning your taste: 👍 {taste.likes.length} liked · 👎 {taste.dislikes.length} avoided</p>
+        )}
         {err && <p className="text-sm text-red-600">{err}</p>}
       </div>
 
-      {loading && <StepLoader />}
+      {loading && <StepLoader steps={mode === "now" ? STEPS_NOW : STEPS_WEEK} />}
 
-      {plan && (
-        <div className="pop mt-6 space-y-5">
-          <div className="card p-5">
-            <p className="label mb-2">🧺 Spotted in your kitchen</p>
-            <div className="flex flex-wrap gap-1.5">{plan.detected.map((d) => <span key={d} className="chip">{d}</span>)}</div>
-          </div>
+      {detected.length > 0 && !loading && (
+        <div className="card mt-5 p-4">
+          <p className="label mb-2">🧺 Spotted</p>
+          <div className="flex flex-wrap gap-1.5">{detected.map((d) => <span key={d} className="chip">{d}</span>)}</div>
+        </div>
+      )}
 
-          <div>
-            <p className="label mb-2">🍽️ Your week</p>
-            <div className="space-y-2">
-              {plan.meals.map((m, i) => (
-                <div key={i} className="card overflow-hidden">
-                  <button onClick={() => setOpen(open === i ? null : i)} className="flex w-full items-center justify-between p-4 text-left">
-                    <div>
-                      <span className="text-xs font-bold uppercase tracking-wide text-[var(--color-accent2)]">{m.day}</span>
-                      <p className="font-semibold">{m.name}</p>
-                    </div>
-                    <span className="text-xs text-[var(--color-mute)]">⏱ {m.minutes}m {open === i ? "▲" : "▼"}</span>
-                  </button>
-                  {open === i && (
-                    <div className="border-t border-[var(--color-line)] p-4 pt-3">
-                      <p className="mb-2 text-xs text-[var(--color-soft)]">Uses: {m.uses.join(", ")}</p>
-                      <ol className="ml-4 list-decimal space-y-1 text-sm">{m.steps.map((s, j) => <li key={j}>{s}</li>)}</ol>
-                    </div>
-                  )}
-                </div>
-              ))}
+      {/* EAT NOW — options */}
+      {mode === "now" && options.length > 0 && (
+        <div className="mt-5 space-y-3">
+          <p className="label">Pick what sounds good 👇</p>
+          {options.map((m) => <MealCard key={m.name} m={m} onLike={() => doLike(m.name)} onDislike={() => doDislike(m.name)} liked={taste.likes.includes(m.name)} />)}
+          <button className="btn-soft w-full rounded-xl py-3 font-semibold" onClick={() => go(true)} disabled={more}>{more ? "Finding more…" : "↻ Show me other options"}</button>
+        </div>
+      )}
+
+      {/* PLAN WEEK — options per day */}
+      {mode === "week" && week.length > 0 && (
+        <div className="mt-5 space-y-5">
+          {week.map((d) => (
+            <div key={d.day}>
+              <p className="label mb-2">{d.day} — choose one</p>
+              <div className="space-y-2">
+                {d.options.map((m) => (
+                  <MealCard key={m.name} m={m} picked={picks[d.day] === m.name}
+                    onPick={() => setPicks((p) => ({ ...p, [d.day]: m.name }))}
+                    onLike={() => doLike(m.name)} onDislike={() => doDislike(m.name)} liked={taste.likes.includes(m.name)} />
+                ))}
+              </div>
             </div>
-          </div>
-
-          <div className="card p-5">
-            <p className="label mb-2">🛒 Grocery list — only what you’re missing</p>
-            {plan.grocery.length === 0 ? <p className="text-sm text-[var(--color-soft)]">Nothing! You have it all 🎉</p> : (
-              <ul className="space-y-1.5">{plan.grocery.map((g) => <li key={g} className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-[var(--color-accent)]" /> {g}</li>)}</ul>
-            )}
-          </div>
+          ))}
         </div>
       )}
     </main>
