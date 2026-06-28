@@ -4,8 +4,49 @@ import { loadTaste, saveTaste, like, dislike, type Taste } from "@/lib/taste";
 import { loadPantry, savePantry, addItem, removeItem, allPantry, type Pantry } from "@/lib/pantry";
 import RecipeModal, { type Meal } from "@/components/RecipeModal";
 import CookMode from "@/components/CookMode";
+import { buildGrocery, groceryText } from "@/lib/grocery";
+import { dishEmoji, dishGradient } from "@/lib/dish";
 
 type DayPlan = { day: string; options: Meal[] };
+
+function GroceryList({ meals }: { meals: Meal[] }) {
+  const groups = buildGrocery(meals);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const total = meals.reduce((s, m) => s + (m.cost || 0), 0);
+  async function share() {
+    const text = groceryText(groups);
+    try { if (navigator.share) { await navigator.share({ title: "Grocery list", text }); return; } } catch { /* fall through */ }
+    try { await navigator.clipboard.writeText(text); alert("Grocery list copied!"); } catch { /* noop */ }
+  }
+  if (!groups.length) return <div className="card p-5 text-sm text-[var(--color-soft)]">Nothing to buy — your picks use what you already have 🎉</div>;
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-semibold">🛒 Grocery list <span className="text-xs font-normal text-[var(--color-mute)]">(only what you’re missing)</span></p>
+        <button onClick={share} className="btn-soft rounded-xl px-3 py-1.5 text-sm">↗ Share</button>
+      </div>
+      {total > 0 && <p className="mb-3 text-sm text-[var(--color-soft)]">Estimated meals cost: <b>~${Math.round(total)}</b></p>}
+      <div className="space-y-3">
+        {groups.map((g) => (
+          <div key={g.aisle}>
+            <p className="label mb-1.5">{g.aisle}</p>
+            <ul className="space-y-1">
+              {g.items.map((it) => (
+                <li key={it}>
+                  <label className="flex items-center gap-2 text-sm" style={{ opacity: checked.has(it) ? 0.45 : 1, textDecoration: checked.has(it) ? "line-through" : "none" }}>
+                    <input type="checkbox" className="accent-[var(--color-accent)]" checked={checked.has(it)}
+                      onChange={() => setChecked((c) => { const n = new Set(c); n.has(it) ? n.delete(it) : n.add(it); return n; })} />
+                    {it}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const DIETS = ["Any", "Vegetarian", "Vegan", "Halal", "Keto"];
 const MOODS = ["Quick", "Light", "Hearty", "Comfort", "Healthy", "Spicy"];
@@ -46,11 +87,12 @@ function MealCard({ m, picked, onPick, onOpen, onLike, onDislike, liked }:
   { m: Meal; picked?: boolean; onPick?: () => void; onOpen: () => void; onLike: () => void; onDislike: () => void; liked: boolean }) {
   return (
     <div className="card pop p-4" style={picked ? { borderColor: "var(--color-accent)", borderWidth: 2 } : {}}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+      <div className="flex items-start gap-3">
+        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl text-3xl" style={{ background: dishGradient(m.name) }}>{dishEmoji(m.name)}</div>
+        <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             <span className="chip">{m.flavor === "sweet" ? "🍬 sweet" : "🧂 savory"}</span>
-            <span className="text-xs text-[var(--color-mute)]">⏱ {m.minutes}m · {m.nutrition.calories} cal · {m.nutrition.protein}g protein</span>
+            <span className="text-xs text-[var(--color-mute)]">⏱ {m.minutes}m · {m.nutrition.calories} cal · {m.nutrition.protein}g protein{m.cost ? ` · ~$${m.cost}` : ""}</span>
           </div>
           <p className="font-semibold leading-snug">{m.name}</p>
           <p className="mt-0.5 text-sm text-[var(--color-soft)]">{m.note}</p>
@@ -112,6 +154,7 @@ export default function Home() {
   const [flavor, setFlavor] = useState("Any");
   const [moods, setMoods] = useState<string[]>([]);
   const [diet, setDiet] = useState("Any");
+  const [budget, setBudget] = useState(false);
   const [people, setPeople] = useState(2);
   const [days, setDays] = useState(5);
   const [loading, setLoading] = useState(false);
@@ -136,7 +179,7 @@ export default function Home() {
     try {
       const res = await fetch("/api/plan", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, image: img || undefined, ingredients: combinedIngredients(), prefs: { diet, people, days, flavor, moods, maxMinutes: mode === "now" ? 25 : undefined }, taste }),
+        body: JSON.stringify({ mode, image: img || undefined, ingredients: combinedIngredients(), prefs: { diet, budget, people, days, flavor, moods, maxMinutes: mode === "now" ? 25 : undefined }, taste }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -193,7 +236,10 @@ export default function Home() {
           {["Any", "Savory", "Sweet"].map((f) => <button key={f} className="pill" data-on={flavor === f} onClick={() => setFlavor(f)}>{f === "Sweet" ? "🍬 Sweet" : f === "Savory" ? "🧂 Savory" : f}</button>)}
         </div>
         <div className="flex flex-wrap gap-1.5">{MOODS.map((m) => <button key={m} className="pill" data-on={moods.includes(m)} onClick={() => setMoods((x) => x.includes(m) ? x.filter((y) => y !== m) : [...x, m])}>{m}</button>)}</div>
-        <div className="flex flex-wrap gap-1.5">{DIETS.map((d) => <button key={d} className="pill" data-on={diet === d} onClick={() => setDiet(d)}>{d}</button>)}</div>
+        <div className="flex flex-wrap gap-1.5">
+          {DIETS.map((d) => <button key={d} className="pill" data-on={diet === d} onClick={() => setDiet(d)}>{d}</button>)}
+          <button className="pill" data-on={budget} onClick={() => setBudget((b) => !b)}>💸 Budget</button>
+        </div>
         {mode === "week" && (
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-2">👥 <input type="number" min={1} max={8} value={people} onChange={(e) => setPeople(+e.target.value)} className="input w-16 py-1.5" /></label>
@@ -230,6 +276,13 @@ export default function Home() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {mode === "week" && Object.keys(picks).length > 0 && (
+        <div className="mt-6">
+          <p className="label mb-2">📅 Your week ({Object.keys(picks).length} picked) + shopping</p>
+          <GroceryList meals={week.flatMap((d) => d.options.filter((o) => picks[d.day] === o.name))} />
         </div>
       )}
 

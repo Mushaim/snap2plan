@@ -4,7 +4,7 @@ export type Ingredient = { item: string; qty: string; have: boolean };
 export type Nutrition = { calories: number; protein: number; carbs: number; fat: number };
 export type Meal = {
   name: string; flavor: "sweet" | "savory"; minutes: number; difficulty: string;
-  uses: string[]; missing: string[]; ingredients: Ingredient[]; steps: string[]; nutrition: Nutrition; note: string;
+  uses: string[]; missing: string[]; ingredients: Ingredient[]; steps: string[]; nutrition: Nutrition; cost?: number; note: string;
 };
 
 function Macro({ v, label, color }: { v: number; label: string; color: string }) {

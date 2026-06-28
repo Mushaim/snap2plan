@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
 
-type Prefs = { diet?: string; people?: number; days?: number; maxMinutes?: number; flavor?: string; moods?: string[]; cuisine?: string };
+type Prefs = { diet?: string; people?: number; days?: number; maxMinutes?: number; flavor?: string; moods?: string[]; cuisine?: string; budget?: boolean };
 type Taste = { likes?: string[]; dislikes?: string[]; excluded?: string[] };
 
 const mealProps = {
@@ -25,9 +25,10 @@ const mealProps = {
     properties: { calories: { type: "number" }, protein: { type: "number" }, carbs: { type: "number" }, fat: { type: "number" } },
     required: ["calories", "protein", "carbs", "fat"],
   },
+  cost: { type: "number", description: "rough estimated cost per serving in USD (e.g. 3 for $3)" },
   note: { type: "string", description: "one short enticing line about the dish" },
 };
-const meal = { type: "object", properties: mealProps, required: ["name", "flavor", "minutes", "difficulty", "uses", "missing", "ingredients", "steps", "nutrition", "note"] };
+const meal = { type: "object", properties: mealProps, required: ["name", "flavor", "minutes", "difficulty", "uses", "missing", "ingredients", "steps", "nutrition", "cost", "note"] };
 
 export async function POST(req: Request) {
   const { mode, image, ingredients, prefs, taste } = (await req.json()) as
@@ -44,6 +45,7 @@ export async function POST(req: Request) {
     p.flavor && p.flavor !== "Any" ? `The user is craving ${p.flavor.toUpperCase()} food right now — bias toward that.` : "",
     p.moods?.length ? `Mood/vibe: ${p.moods.join(", ")}.` : "",
     p.cuisine && p.cuisine !== "Any" ? `Cuisine lean: ${p.cuisine}.` : "",
+    p.budget ? "BUDGET mode: keep every meal cheap and budget-friendly (low cost per serving, affordable staples)." : "",
     t.excluded?.length ? `NEVER use these ingredients: ${t.excluded.join(", ")}.` : "",
     t.dislikes?.length ? `NEVER suggest these dishes (the user disliked them): ${t.dislikes.join("; ")}.` : "",
     t.likes?.length ? `The user LIKES dishes like: ${t.likes.join("; ")} — offer things in that spirit.` : "",
