@@ -14,10 +14,20 @@ const mealProps = {
   difficulty: { type: "string", enum: ["easy", "medium"] },
   uses: { type: "array", items: { type: "string" }, description: "items they already have, used here" },
   missing: { type: "array", items: { type: "string" }, description: "items they'd need to buy (empty if none)" },
-  steps: { type: "array", items: { type: "string" }, description: "3-6 short steps" },
+  ingredients: {
+    type: "array",
+    description: "the FULL ingredient list with amounts for the recipe",
+    items: { type: "object", properties: { item: { type: "string" }, qty: { type: "string" }, have: { type: "boolean", description: "true if it's something they already have" } }, required: ["item", "qty", "have"] },
+  },
+  steps: { type: "array", items: { type: "string" }, description: "3-7 clear cooking steps; mention timings in the step text where useful (e.g. 'simmer 10 min')" },
+  nutrition: {
+    type: "object", description: "approximate per-serving nutrition",
+    properties: { calories: { type: "number" }, protein: { type: "number" }, carbs: { type: "number" }, fat: { type: "number" } },
+    required: ["calories", "protein", "carbs", "fat"],
+  },
   note: { type: "string", description: "one short enticing line about the dish" },
 };
-const meal = { type: "object", properties: mealProps, required: ["name", "flavor", "minutes", "difficulty", "uses", "missing", "steps", "note"] };
+const meal = { type: "object", properties: mealProps, required: ["name", "flavor", "minutes", "difficulty", "uses", "missing", "ingredients", "steps", "nutrition", "note"] };
 
 export async function POST(req: Request) {
   const { mode, image, ingredients, prefs, taste } = (await req.json()) as
