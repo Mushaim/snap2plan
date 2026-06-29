@@ -204,7 +204,7 @@ export default function Home() {
     <main className="mx-auto max-w-2xl px-5 py-8">
       <div className="mb-5">
         <h1 className="serif text-4xl font-bold">Snap2Plan 🥗</h1>
-        <p className="mt-1 text-[var(--color-soft)]">Snap your fridge → get options, you choose. <span className="chip">demo</span></p>
+        <p className="mt-1 text-[var(--color-soft)]">Snap your fridge → get options, you choose.</p>
       </div>
 
       <PantryEditor pantry={pantry} setP={setPantry} />

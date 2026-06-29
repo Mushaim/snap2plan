@@ -12,7 +12,7 @@ Snap a photo of your fridge (or just list what you have) and Snap2Plan plans a w
 - **"Use what you have" optimization.** The prompt biases meals toward existing ingredients and puts only genuinely-missing items (with rough quantities) on the grocery list — the core value.
 - **Real constraints.** Diet (veg/vegan/halal/keto), people, days, and a "quick (<20 min)" toggle all shape the plan.
 - **Fast + light.** Photos are downscaled client-side before upload; a stepped loader ("looking in your fridge → planning → grocery list") keeps the wait alive.
-- **No-camera fallback.** Type your ingredients instead of snapping — so it's instantly demoable.
+- **No-camera fallback.** Type your ingredients instead of snapping — so it works instantly, anywhere.
 
 ## Stack
 Next.js (App Router) · Anthropic Claude (vision + structured tool use) · TypeScript · Tailwind · Vercel.
